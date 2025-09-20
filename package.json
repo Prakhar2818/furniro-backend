@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "seed": "node dataSeeder.js"
+    "seed": "node dataSeeder.js",
+    "build": "echo 'No build step required for Node.js backend - ready for deployment'"
   },
   "dependencies": {
     "express": "^4.18.2",
@@ -16,5 +17,8 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
