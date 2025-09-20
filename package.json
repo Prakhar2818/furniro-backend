@@ -1,13 +1,15 @@
 {
-  "name": "fog-backend",
+  "name": "furniro-backend",
   "version": "1.0.0",
+  "description": "Furniture e-commerce backend API",
   "main": "index.js",
   "type": "module",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
     "seed": "node dataSeeder.js",
-    "build": "echo 'No build step required for Node.js backend - ready for deployment'"
+    "build": "npm install",
+    "postinstall": "echo 'Dependencies installed successfully'"
   },
   "dependencies": {
     "express": "^4.18.2",
