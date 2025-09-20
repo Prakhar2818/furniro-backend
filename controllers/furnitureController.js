@@ -2,6 +2,8 @@ import Product from "../models/FurnitureItem.js";
 
 export const getAllProducts = async (req, res) => {
   try {
+    console.log('getAllProducts called with query:', req.query);
+    
     const {
       page = 1,
       limit = 12,
@@ -39,6 +41,8 @@ export const getAllProducts = async (req, res) => {
       ];
     }
 
+    console.log('Filter applied:', filter);
+
     // Build sort object
     const sort = {};
     sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
@@ -48,7 +52,6 @@ export const getAllProducts = async (req, res) => {
     
     // Execute query
     const products = await Product.find(filter)
-      .populate("category")
       .sort(sort)
       .skip(skip)
       .limit(Number(limit));
@@ -56,23 +59,26 @@ export const getAllProducts = async (req, res) => {
     // Get total count for pagination
     const total = await Product.countDocuments(filter);
     
+    console.log(`Found ${products.length} products, total: ${total}`);
+    
     res.json({
       products,
       pagination: {
         currentPage: Number(page),
-        totalPages: Math.ceil(total / Number(limit)),
+        totalPages: Math.ceil(total / Number(limit)) || 1,
         totalItems: total,
         itemsPerPage: Number(limit)
       }
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Error in getAllProducts:', err);
+    res.status(500).json({ error: err.message, stack: err.stack });
   }
 };
 
 export const getProductById = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id).populate("category");
+    const product = await Product.findById(req.params.id);
     if (!product) return res.status(404).json({ error: "Product not found" });
     res.json(product);
   } catch (err) {

@@ -85,14 +85,21 @@ async function seedProducts() {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
+    console.log('Connected to MongoDB for seeding...');
+    
     await Product.deleteMany();
+    console.log('Cleared existing products...');
+    
     await Product.insertMany(sampleProducts);
-    console.log("Sample products seeded successfully.");
+    console.log(`Sample products seeded successfully. Added ${sampleProducts.length} products.`);
+    
     mongoose.disconnect();
+    console.log('Disconnected from MongoDB.');
   } catch (err) {
     console.error("Seeding error:", err);
     mongoose.disconnect();
   }
 }
 
+// Run seeding
 seedProducts();

@@ -2,11 +2,27 @@ import Cart from "../models/ShoppingCart.js";
 
 export const getCart = async (req, res) => {
   try {
-    const cart = await Cart.findById(req.params.id).populate("items.product");
-    if (!cart) return res.status(404).json({ error: "Cart not found" });
+    console.log('getCart called for ID:', req.params.id);
+    
+    // Validate ObjectId format
+    if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({ error: 'Invalid cart ID format' });
+    }
+    
+    const cart = await Cart.findById(req.params.id).populate('items.product');
+    if (!cart) {
+      console.log('Cart not found, creating new cart');
+      // Create a new cart if not found
+      const newCart = new Cart({ items: [] });
+      await newCart.save();
+      return res.json(newCart);
+    }
+    
+    console.log('Cart found:', cart._id);
     res.json(cart);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Error in getCart:', err);
+    res.status(500).json({ error: err.message, stack: err.stack });
   }
 };
 
