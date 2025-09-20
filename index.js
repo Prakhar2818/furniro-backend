@@ -37,17 +37,24 @@ if (!MONGODB_URI) {
 
 console.log('Connecting to MongoDB...', MONGODB_URI.includes('mongodb') ? 'URI looks valid' : 'Invalid URI format');
 
+// Set mongoose options to prevent buffering issues
+mongoose.set('bufferCommands', false);
+mongoose.set('bufferMaxEntries', 0);
+
 mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
-  serverSelectionTimeoutMS: 30000, // 30 seconds
-  socketTimeoutMS: 45000, // 45 seconds
+  serverSelectionTimeoutMS: 60000, // Increase to 60 seconds
+  socketTimeoutMS: 60000, // Increase to 60 seconds
+  connectTimeoutMS: 60000, // Add connection timeout
+  maxPoolSize: 10, // Maintain up to 10 socket connections
+  minPoolSize: 5, // Maintain at least 5 socket connections
 })
 .then(() => {
   console.log("MongoDB connected successfully");
   console.log('Database:', MONGODB_URI ? 'Connected to MongoDB Atlas' : 'No MongoDB URI found');
   
-  // Test the connection
+  // Test the connection with a simple operation
   mongoose.connection.db.admin().ping((err, result) => {
     if (err) {
       console.error('MongoDB ping failed:', err);
@@ -55,17 +62,25 @@ mongoose.connect(MONGODB_URI, {
       console.log('MongoDB ping successful:', result);
     }
   });
+  
+  // Additional connection verification
+  setTimeout(async () => {
+    try {
+      const Product = (await import('./models/FurnitureItem.js')).default;
+      const count = await Product.countDocuments().maxTimeMS(10000);
+      console.log(`Database verification: Found ${count} products`);
+    } catch (verifyError) {
+      console.error('Database verification failed:', verifyError.message);
+    }
+  }, 2000);
 })
 .catch((err) => {
   console.error("MongoDB connection error:", err);
   console.error('Please check your MONGODB_URI environment variable');
   console.error('Connection string:', MONGODB_URI ? 'Set' : 'Missing');
   
-  // Exit process if database connection fails
-  setTimeout(() => {
-    console.error('Exiting due to database connection failure');
-    process.exit(1);
-  }, 5000);
+  // Don't exit immediately, allow for connection retry
+  console.log('Will attempt to continue without database connection...');
 });
 
 // MongoDB connection event handlers
@@ -102,7 +117,7 @@ app.get("/", (req, res) => {
   });
 });
 
-// Health check endpoint
+// Health check endpoint with enhanced diagnostics
 app.get("/health", async (req, res) => {
   try {
     // Check database connection
@@ -114,16 +129,38 @@ app.get("/health", async (req, res) => {
       3: 'disconnecting'
     };
     
-    // Import Product model to check collections
-    const Product = (await import('./models/FurnitureItem.js')).default;
-    const productCount = await Product.countDocuments();
+    let productCount = 'unknown';
+    let connectionTest = 'failed';
     
-    res.json({
-      status: 'ok',
+    // Only try to query if connected
+    if (dbState === 1) {
+      try {
+        // Import Product model to check collections
+        const Product = (await import('./models/FurnitureItem.js')).default;
+        
+        // Quick test with timeout
+        productCount = await Product.countDocuments().maxTimeMS(5000);
+        connectionTest = 'success';
+      } catch (queryError) {
+        console.error('Health check query error:', queryError.message);
+        connectionTest = queryError.message;
+      }
+    }
+    
+    const healthStatus = {
+      status: dbState === 1 ? 'ok' : 'warning',
       database: dbStatus[dbState] || 'unknown',
       productCount: productCount,
-      timestamp: new Date().toISOString()
-    });
+      connectionTest: connectionTest,
+      timestamp: new Date().toISOString(),
+      mongooseVersion: mongoose.version,
+      uptime: process.uptime()
+    };
+    
+    // Return 503 if database is not connected
+    const statusCode = dbState === 1 ? 200 : 503;
+    res.status(statusCode).json(healthStatus);
+    
   } catch (error) {
     res.status(500).json({
       status: 'error',
@@ -133,22 +170,35 @@ app.get("/health", async (req, res) => {
   }
 });
 
-// Manual seed endpoint for debugging
+// Manual seed endpoint for debugging with enhanced error handling
 app.post("/seed", async (req, res) => {
   try {
+    console.log('Seed endpoint called - checking database connection...');
+    
+    // Check connection first
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        error: 'Database not connected',
+        readyState: mongoose.connection.readyState,
+        message: 'Cannot seed database - connection unavailable'
+      });
+    }
+    
     const Product = (await import('./models/FurnitureItem.js')).default;
     
-    // Import sample data from seeder
-    const module = await import('./dataSeeder.js');
-    // We'll recreate the sample data here since we simplified the seeder
+    console.log('Clearing existing products...');
+    const deleteResult = await Product.deleteMany({}).maxTimeMS(30000);
+    console.log('Deleted products:', deleteResult.deletedCount);
     
+    // Create sample data
     const productNames = [
-      "Velvet Sectional", "Marble Coffee Table", "Ergonomic Desk Chair", "Platform Bed", "Glass Display Cabinet"
+      "Velvet Sectional", "Marble Coffee Table", "Ergonomic Desk Chair", "Platform Bed", "Glass Display Cabinet",
+      "Round Dining Table", "Entertainment Center", "Leather Recliner", "Windsor Chair", "Walk-in Closet"
     ];
     
     const brands = ["Luxora", "Modernique", "Craftwood", "Elegance Home", "ComfortZone"];
     
-    const sampleProducts = Array.from({ length: 10 }, (_, i) => ({
+    const sampleProducts = Array.from({ length: 20 }, (_, i) => ({
       name: `${productNames[i % productNames.length]} Model-${i + 1}`,
       description: "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
       price: parseFloat((Math.random() * 1000 + 100).toFixed(2)),
@@ -157,17 +207,25 @@ app.post("/seed", async (req, res) => {
       stock: Math.floor(Math.random() * 50) + 5,
     }));
     
-    await Product.deleteMany();
-    await Product.insertMany(sampleProducts);
+    console.log('Inserting new products...');
+    const insertResult = await Product.insertMany(sampleProducts, { 
+      timeout: 30000,
+      maxTimeMS: 30000 
+    });
+    
+    console.log('Seeding completed successfully');
     
     res.json({ 
       message: 'Database seeded successfully', 
-      productsAdded: sampleProducts.length 
+      productsAdded: insertResult.length,
+      deletedCount: deleteResult.deletedCount
     });
   } catch (error) {
+    console.error('Seed error:', error);
     res.status(500).json({
       error: error.message,
-      message: 'Failed to seed database'
+      message: 'Failed to seed database',
+      type: error.name
     });
   }
 });

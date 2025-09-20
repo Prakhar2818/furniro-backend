@@ -1,8 +1,19 @@
 import Product from "../models/FurnitureItem.js";
+import mongoose from "mongoose";
 
 export const getAllProducts = async (req, res) => {
   try {
     console.log('getAllProducts called with query:', req.query);
+    
+    // Check database connection state before proceeding
+    if (mongoose.connection.readyState !== 1) {
+      console.error('Database not connected. ReadyState:', mongoose.connection.readyState);
+      return res.status(503).json({ 
+        error: 'Database connection unavailable', 
+        readyState: mongoose.connection.readyState,
+        message: 'Please try again in a moment' 
+      });
+    }
     
     const {
       page = 1,
@@ -50,15 +61,24 @@ export const getAllProducts = async (req, res) => {
     // Calculate pagination
     const skip = (Number(page) - 1) * Number(limit);
     
-    // Execute query
+    // Set a custom timeout and use lean() for better performance
+    const timeoutMs = 15000; // 15 seconds
+    
+    console.log('Executing product query...');
+    
+    // Execute query with timeout and lean for better performance
     const products = await Product.find(filter)
       .sort(sort)
       .skip(skip)
       .limit(Number(limit))
-      .maxTimeMS(20000); // 20 second timeout
+      .lean() // Returns plain JavaScript objects instead of Mongoose documents
+      .maxTimeMS(timeoutMs);
       
-    // Get total count for pagination
-    const total = await Product.countDocuments(filter).maxTimeMS(20000);
+    console.log('Product query completed, getting count...');
+    
+    // Get total count for pagination with timeout
+    const total = await Product.countDocuments(filter)
+      .maxTimeMS(timeoutMs);
     
     console.log(`Found ${products.length} products, total: ${total}`);
     
@@ -77,12 +97,22 @@ export const getAllProducts = async (req, res) => {
     // Handle specific timeout errors
     if (err.message.includes('buffering timed out') || err.message.includes('timed out')) {
       return res.status(503).json({ 
-        error: 'Database connection timeout', 
-        message: 'Please try again in a moment' 
+        error: 'Database query timeout', 
+        message: 'The database is taking too long to respond. Please try again in a moment.',
+        type: 'timeout'
       });
     }
     
-    res.status(500).json({ error: err.message, stack: err.stack });
+    // Handle connection errors
+    if (err.message.includes('connection') || err.message.includes('network')) {
+      return res.status(503).json({ 
+        error: 'Database connection error', 
+        message: 'Unable to connect to database. Please try again later.',
+        type: 'connection'
+      });
+    }
+    
+    res.status(500).json({ error: err.message, type: 'general' });
   }
 };
 
