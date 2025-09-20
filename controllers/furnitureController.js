@@ -54,10 +54,11 @@ export const getAllProducts = async (req, res) => {
     const products = await Product.find(filter)
       .sort(sort)
       .skip(skip)
-      .limit(Number(limit));
+      .limit(Number(limit))
+      .maxTimeMS(20000); // 20 second timeout
       
     // Get total count for pagination
-    const total = await Product.countDocuments(filter);
+    const total = await Product.countDocuments(filter).maxTimeMS(20000);
     
     console.log(`Found ${products.length} products, total: ${total}`);
     
@@ -72,6 +73,15 @@ export const getAllProducts = async (req, res) => {
     });
   } catch (err) {
     console.error('Error in getAllProducts:', err);
+    
+    // Handle specific timeout errors
+    if (err.message.includes('buffering timed out') || err.message.includes('timed out')) {
+      return res.status(503).json({ 
+        error: 'Database connection timeout', 
+        message: 'Please try again in a moment' 
+      });
+    }
+    
     res.status(500).json({ error: err.message, stack: err.stack });
   }
 };

@@ -1,4 +1,5 @@
 import Cart from "../models/ShoppingCart.js";
+import mongoose from "mongoose";
 
 export const getCart = async (req, res) => {
   try {
@@ -9,7 +10,15 @@ export const getCart = async (req, res) => {
       return res.status(400).json({ error: 'Invalid cart ID format' });
     }
     
-    const cart = await Cart.findById(req.params.id).populate('items.product');
+    // Check database connection before query
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ error: 'Database connection unavailable' });
+    }
+    
+    const cart = await Cart.findById(req.params.id)
+      .populate('items.product')
+      .maxTimeMS(20000); // 20 second timeout
+      
     if (!cart) {
       console.log('Cart not found, creating new cart');
       // Create a new cart if not found
@@ -22,6 +31,15 @@ export const getCart = async (req, res) => {
     res.json(cart);
   } catch (err) {
     console.error('Error in getCart:', err);
+    
+    // Handle specific timeout errors
+    if (err.message.includes('buffering timed out')) {
+      return res.status(503).json({ 
+        error: 'Database connection timeout', 
+        message: 'Please try again in a moment' 
+      });
+    }
+    
     res.status(500).json({ error: err.message, stack: err.stack });
   }
 };

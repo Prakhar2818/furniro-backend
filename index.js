@@ -30,17 +30,64 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 const MONGODB_URI = process.env.MONGODB_URI;
 
+if (!MONGODB_URI) {
+  console.error('MONGODB_URI environment variable is not set!');
+  process.exit(1);
+}
+
+console.log('Connecting to MongoDB...', MONGODB_URI.includes('mongodb') ? 'URI looks valid' : 'Invalid URI format');
+
 mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
+  serverSelectionTimeoutMS: 30000, // 30 seconds
+  socketTimeoutMS: 45000, // 45 seconds  
+  bufferMaxEntries: 0, // Disable mongoose buffering
+  bufferCommands: false, // Disable mongoose buffering
 })
 .then(() => {
   console.log("MongoDB connected successfully");
   console.log('Database:', MONGODB_URI ? 'Connected to MongoDB Atlas' : 'No MongoDB URI found');
+  
+  // Test the connection
+  mongoose.connection.db.admin().ping((err, result) => {
+    if (err) {
+      console.error('MongoDB ping failed:', err);
+    } else {
+      console.log('MongoDB ping successful:', result);
+    }
+  });
 })
 .catch((err) => {
   console.error("MongoDB connection error:", err);
   console.error('Please check your MONGODB_URI environment variable');
+  console.error('Connection string:', MONGODB_URI ? 'Set' : 'Missing');
+  
+  // Exit process if database connection fails
+  setTimeout(() => {
+    console.error('Exiting due to database connection failure');
+    process.exit(1);
+  }, 5000);
+});
+
+// MongoDB connection event handlers
+mongoose.connection.on('connected', () => {
+  console.log('Mongoose connected to MongoDB');
+});
+
+mongoose.connection.on('error', (err) => {
+  console.error('Mongoose connection error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.log('Mongoose disconnected from MongoDB');
+});
+
+// Handle application termination
+process.on('SIGINT', async () => {
+  await mongoose.connection.close();
+  console.log('MongoDB connection closed.');
+  process.exit(0);
 });
 
 import productRoutes from "./routes/furnitureRoutes.js";
