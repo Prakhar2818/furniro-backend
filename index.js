@@ -39,7 +39,6 @@ console.log('Connecting to MongoDB...', MONGODB_URI.includes('mongodb') ? 'URI l
 
 // Set mongoose options to prevent buffering issues
 mongoose.set('bufferCommands', false);
-mongoose.set('bufferMaxEntries', 0);
 
 mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
